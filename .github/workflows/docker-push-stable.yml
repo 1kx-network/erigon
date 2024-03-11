@@ -4,22 +4,50 @@ on:
   push:
     branches:
     - "covalent"
+    tags:
+      - 'v*'
 
 jobs:
   deploy-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Login to Artifact Registry/GCR
-        uses: docker/login-action@v2
-        with:
-          registry: us-docker.pkg.dev
-          username: _json_key
-          password: ${{ secrets.GCR_JSON_KEY }}
+#      - name: Login to Artifact Registry/GCR
+#        uses: docker/login-action@v2
+#        with:
+#          registry: us-docker.pkg.dev
+#          username: _json_key
+#          password: ${{ secrets.GCR_JSON_KEY }}
+#      - name: Build & Publish the Docker image
+#        run: |
+#          docker buildx create --name builder --use --platform=linux/amd64,linux/arm64  && docker buildx build --file ./Dockerfile-evm --platform=linux/amd64,linux/arm64 . -t us-docker.pkg.dev/covalent-project/network/evm-server:stable --push
 
-      - uses: actions/checkout@v2
-      # - uses: satackey/action-docker-layer-caching@v0.0.10
-      #   # Ignore the failure of a step and avoid terminating the job.
-      #   continue-on-error: true
-      - name: Build & Publish the Docker image
-        run: |
-          docker buildx create --name builder --use --platform=linux/amd64,linux/arm64  && docker buildx build --file ./Dockerfile-evm --platform=linux/amd64,linux/arm64 . -t us-docker.pkg.dev/covalent-project/network/evm-server:stable --push
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata for the Docker image
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          file: Dockerfile-evm
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
